@@ -13,7 +13,7 @@ import geopandas as gpd
 from streamlit_folium import st_folium
 import folium
 import os
-import glob # New import for robust file checking
+import glob 
 
 # --- 1. APP CONFIGURATION ---
 st.set_page_config(
@@ -23,11 +23,7 @@ st.set_page_config(
 )
 
 # --- 2. MODEL & DATA LOADING ---
-# These are the "backend" functions. @st.cache_resource ensures we only load models once.
-
-# --- AI FORECAST MODEL (TEAM 1) ---
-
-# We must re-define the LSTM model structure so PyTorch can load the weights
+# Define the LSTM model structure for torch.load
 class LSTMModel(nn.Module):
     def __init__(self, input_size=1, hidden_size=50, num_layers=2, output_size=1, dropout=0.2):
         super(LSTMModel, self).__init__()
@@ -46,7 +42,7 @@ class LSTMModel(nn.Module):
 
 @st.cache_resource
 def load_forecast_model():
-    """Loads the trained LSTM model from the /models folder."""
+    """Loads the trained LSTM model."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = LSTMModel(input_size=1, hidden_size=50, num_layers=2, output_size=1).to(device)
     model.load_state_dict(torch.load('models/forecast_model.pth', map_location=device))
@@ -62,8 +58,8 @@ def load_covid_data():
     location_to_train = 'India'
     df_filtered = df[df['country'] == location_to_train].copy()
     
-    # Target Variable Change: Using 'new_cases' as the prediction target
-    df_model_data = df_filtered[['date', 'new_cases', 'new_cases_smoothed']] # Use smoothed as the target for stability
+    # Target Variable: Using 'new_cases_smoothed' as the prediction target
+    df_model_data = df_filtered[['date', 'new_cases', 'new_cases_smoothed']]
     df_model_data.rename(columns={'new_cases_smoothed': 'target_cases'}, inplace=True)
 
     df_model_data['date'] = pd.to_datetime(df_model_data['date'])
@@ -161,7 +157,7 @@ def load_map_data():
     shp_files = glob.glob(os.path.join(gis_path, '*.shp'))
     
     if not shp_files:
-        raise FileNotFoundError("No .shp file found in the 'gis/' directory.")
+        raise FileNotFoundError("No .shp file found in the 'gis/' directory. Map functionality unavailable.")
         
     # Use the first found .shp file
     gdf = gpd.read_file(shp_files[0])
@@ -190,8 +186,9 @@ with st.spinner('Warming up AI models and loading data... This may take a moment
     try:
         gdf = load_map_data() 
     except Exception as e:
-        st.warning(f"Map Data Load Warning: GeoPandas data failed to load. Map functionality will be limited. Details: {e}")
-        gdf = gpd.GeoDataFrame() # Use an empty GeoDataFrame if it fails
+        # Use an empty GeoDataFrame if it fails
+        st.warning(f"Map Data Load Warning: GeoPandas data failed to load. Map functionality will be limited.")
+        gdf = gpd.GeoDataFrame() 
 
 # --- Initialize Session State for integration ---
 if 'alert_active' not in st.session_state:
@@ -216,9 +213,10 @@ if page == "AI Forecast":
     y_actual = scaler_target.inverse_transform(y)
     
     # Create a plotting DataFrame
-    # FIX: Array length mismatch correction
-    plot_dates = df_plot_data.index[SEQ_LENGTH + PREDICTION_DELAY - 1:].copy()
-    
+    # FINAL FIX: Correct the array length mismatch by slicing the index correctly
+    start_index = SEQ_LENGTH + PREDICTION_DELAY
+    plot_dates = df_plot_data.index[start_index : start_index + len(y_actual)]
+
     plot_df = pd.DataFrame({
         'Actual Outcomes (Smoothed Cases)': y_actual.flatten(),
         'Predicted Outcomes': all_predictions.flatten()
@@ -287,11 +285,13 @@ elif page == "Geospatial Map":
 
     # --- Check if GeoPandas data was loaded successfully ---
     if gdf.empty:
-        st.warning("Map data could not be initialized. Please ensure GEOS/GDAL dependencies are met.")
+        st.warning("Map data could not be initialized. Please ensure your /gis folder contains the necessary Shapefiles.")
+        # Create a fallback map centered on India
+        m = folium.Map(location=[22.351114, 78.667743], zoom_start=4)
+        st_folium(m, width=725, height=500)
         st.stop()
         
     # Create the Folium map
-    # Get the center of the map
     center_y = gdf.centroid.y.mean()
     center_x = gdf.centroid.x.mean()
     m = folium.Map(location=[center_y, center_x], zoom_start=6)
