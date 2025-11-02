@@ -1,6 +1,6 @@
-## Project Repository Guide: SENTINEL - Advanced Predictive Epidemiology
+# Project Repository Guide: SENTINEL - Advanced Predictive Epidemiology
 
-This document serves as the official guide to the **AI Disease Surveillance Platform**, detailing the system's scientific foundation, technical components, and pathways for future scalability in urban environments.
+This document serves as the official guide to the **AI Disease Surveillance Platform** (codenamed SENTINEL), detailing the system's scientific foundation, technical components, and pathways for future scalability in urban environments.
 
 -----
 
@@ -20,13 +20,13 @@ WBE is the scientifically validated foundation underpinning the platform.
 
 ### 2\. Technical Architecture and Model Innovation
 
-The core system integrates three distinct components, all engineered using the PyTorch deep learning framework.
+The core system integrates three distinct components, all engineered using the **PyTorch deep learning framework** to ensure performance and scalability.
 
 #### 2.1. AI Forecasting Engine (PyTorch LSTM)
 
   * **Function:** Serves as the predictive engine, forecasting the magnitude and timing of future disease peaks via time-series analysis.
   * **Model:** A **Long Short-Term Memory (LSTM)** neural network is utilized, selected for its proficiency in identifying complex, non-linear dependencies within sequential data.
-  * **Data Strategy (Validation Proxy):** The model was validated using a high-fidelity proxy: training involved using COVID-19 **`new_cases`** (the early indicator) to successfully predict the subsequent spike in **`new_deaths`** (the lagging outcome) 7 days later. This confirms the core predictive logic.
+  * **Data Strategy (Validation Proxy):** The model was validated using a high-fidelity proxy: training involved using COVID-19 **`new_cases`** (the early indicator) to successfully predict the resulting spike in **`new_cases`** 7 days later (our proxy for severe outcomes/hospitalizations). This confirms the core predictive logic.
 
 #### 2.2. Pathogen Identification (PyTorch ResNet18)
 
@@ -36,7 +36,7 @@ The core system integrates three distinct components, all engineered using the P
 #### 2.3. Geospatial Visualization and Network Analysis
 
   * **Function:** Translates abstract AI alerts into actionable geographic intelligence.
-  * **Tools:** **GeoPandas** processes the India Drains Shapefiles, and **Folium** provides the interactive web map.
+  * **Tools:** **GeoPandas** processes the India Drains Shapefiles, and **Folium** provides the interactive web mapping layer.
   * **Actionable Intelligence:** The system dynamically colors the map based on the AI's predictions (e.g., coloring a drainage basin **RED** when a spike is forecasted), identifying the specific sewershed for targeted intervention.
 
 -----
@@ -47,8 +47,8 @@ The architecture is engineered for rapid and cost-efficient scaling within the I
 
 #### 3.1. Operational and Economic Scaling
 
-  * **Cost Efficiency:** The entire citywide surveillance system is projected to cost approximately **₹2.5 crores**, demonstrating clear cost-benefit against the estimated **₹50+ crores** required to manage a single major epidemic.
-  * **Partnership Model:** The platform mandates partnering with **existing water quality and clinical laboratories**, minimizing initial capital expenditure and accelerating adoption.
+  * **Cost Efficiency:** The entire citywide surveillance system is projected to cost approximately **₹2.5 crores**, achieving clear cost-benefit against the estimated **₹50+ crores** required to manage a single major epidemic.
+  * **Partnership Model:** The platform relies on partnering with **existing water quality and clinical laboratories**, minimizing initial capital expenditure and accelerating adoption.
   * **Integration with IDSP:** The system is designed to integrate seamlessly with India's Integrated Disease Surveillance Programme (IDSP) to ensure early warning data translates into official, coordinated public health action.
 
 #### 3.2. Technical Expansion
@@ -64,12 +64,13 @@ To run the application, the environment must be correctly configured and all dep
 
 #### 4.1. Prerequisites
 
-1.  **Python:** Python 3.9+ and a virtual environment (`.venv`) must be activated.
-2.  **Data Placement:** Ensure the following files are locally available:
+1.  **Python:** Python 3.9+ installed and a virtual environment (`.venv`) must be activated.
+2.  **Data Placement:** Ensure the following files are locally available in the correct structure:
       * `data/owid-covid-data.csv`
       * `data/archive/` (Unzipped HEMIC images)
       * `gis/` (MAPOG Shapefiles: `.shp`, `.dbf`, `.shx`, etc.)
-3.  **Model Files:** The three trained files must be placed in the **`models/`** folder:
+3.  **Model Files (Critical Step):**
+    The trained models are **not included** in this repository due to file size restrictions. They must be obtained directly from the project owner (or your team's Google Drive) and placed in the **`models/`** folder:
       * `forecast_model.pth`
       * `cv_model.pth`
       * `cv_class_names.txt`
