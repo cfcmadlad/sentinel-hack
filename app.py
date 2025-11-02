@@ -23,6 +23,8 @@ st.set_page_config(
 
 # --- 2. MODEL & DATA LOADING ---
 # These are the "backend" functions. @st.cache_resource ensures we only load models once.
+# This also assumes your models are in Google Drive. If you downloaded them, 
+# you'll need to adjust the paths to your /models folder.
 
 # --- AI FORECAST MODEL (TEAM 1) ---
 
@@ -45,18 +47,23 @@ class LSTMModel(nn.Module):
 
 @st.cache_resource
 def load_forecast_model():
-    """Loads the trained LSTM model from the /models folder."""
+    """Loads the trained LSTM model from Google Drive."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = LSTMModel(input_size=1, hidden_size=50, num_layers=2, output_size=1).to(device)
     
-    # Load the weights you saved from Colab
-    model.load_state_dict(torch.load('models/forecast_model.pth', map_location=device))
+    # --- IMPORTANT: This path points to Google Drive. ---
+    # If you downloaded the model to your /models folder, change this path:
+    model_path = 'models/forecast_model.pth' # Use this if you downloaded
+    # model_path = '/content/drive/MyDrive/forecast_model.pth' # Use this if running in Colab
+    
+    model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
     return model
 
 @st.cache_data
 def load_covid_data():
     """Loads and prepares the OWID data for the demo."""
+    # --- This path points to your local /data folder ---
     df = pd.read_csv('data/owid-covid-data.csv')
     
     # --- Filter, Clean, and Prep Data ---
@@ -100,11 +107,16 @@ def load_covid_data():
 
 @st.cache_resource
 def load_cv_model():
-    """Loads the trained ResNet model from the /models folder."""
+    """Loads the trained ResNet model from Google Drive."""
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     # Load the class names we saved from Colab
-    with open('models/cv_class_names.txt', 'r') as f:
+    # --- IMPORTANT: This path points to Google Drive. ---
+    # If you downloaded the files, change these paths:
+    class_names_path = 'models/cv_class_names.txt' # Use this if you downloaded
+    model_path = 'models/cv_model.pth' # Use this if you downloaded
+    
+    with open(class_names_path, 'r') as f:
         class_names = [line.strip() for line in f.readlines()]
     num_classes = len(class_names)
     
@@ -116,7 +128,7 @@ def load_cv_model():
     model.fc = nn.Linear(num_ftrs, num_classes)
     
     # Load the saved weights
-    model.load_state_dict(torch.load('models/cv_model.pth', map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location=device))
     model = model.to(device)
     model.eval()
     
@@ -148,9 +160,9 @@ def predict_parasite(image, model, class_names, transform, device):
 
 @st.cache_data
 def load_map_data():
-    """Loads the GIS shapefile."""
-    # --- Find the .shp file in the /gis folder ---
+    """Loads the GIS shapefile from the /gis folder."""
     gis_path = 'gis/'
+    # Find the .shp file in the /gis folder (change if name is different)
     shp_file = [f for f in os.listdir(gis_path) if f.endswith('.shp')][0]
     gdf = gpd.read_file(os.path.join(gis_path, shp_file))
     return gdf
@@ -160,14 +172,25 @@ st.title("🛰️ SENTINEL: AI Disease Surveillance Dashboard")
 
 # --- Load all models and data ---
 with st.spinner('Warming up AI models and loading data... This may take a moment.'):
-    forecast_model = load_forecast_model()
-    cv_model, cv_class_names, cv_transform, device = load_cv_model()
-    gdf = load_map_data()
-    df_plot_data, X, y, scaler_deaths, SEQ_LENGTH, PREDICTION_DELAY = load_covid_data()
+    try:
+        forecast_model = load_forecast_model()
+        cv_model, cv_class_names, cv_transform, device = load_cv_model()
+        gdf = load_map_data()
+        df_plot_data, X, y, scaler_deaths, SEQ_LENGTH, PREDICTION_DELAY = load_covid_data()
+        
+        # --- Initialize Session State for integration ---
+        if 'alert_active' not in st.session_state:
+            st.session_state['alert_active'] = False
+            
+    except FileNotFoundError as e:
+        st.error(f"Fatal Error: A required file was not found.")
+        st.error(f"Details: {e}")
+        st.error("Please make sure you have downloaded your models from Google Drive and placed them in the /models folder.")
+        st.stop()
+    except Exception as e:
+        st.error(f"An error occurred during loading: {e}")
+        st.stop()
 
-# --- Initialize Session State for integration ---
-if 'alert_active' not in st.session_state:
-    st.session_state['alert_active'] = False
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Navigation")
