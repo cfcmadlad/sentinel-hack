@@ -1,0 +1,10 @@
+streamlit
+torch
+torchvision
+pandas
+numpy
+plotly
+scikit-learn
+geopandas
+streamlit-folium
+folium
