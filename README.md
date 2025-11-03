@@ -1,92 +1,82 @@
-# Project Repository Guide: SENTINEL - Advanced Predictive Epidemiology
+# 🛰️ SENTINEL: AI-Powered Disease Surveillance
 
-This document serves as the official guide to the **AI Disease Surveillance Platform** (codenamed SENTINEL), detailing the system's scientific foundation, technical components, and pathways for future scalability in urban environments.
+**Team:** Markov Chained
 
------
+## 🚀 Live Demo
 
-### 1\. Scientific Foundation and Core Value Proposition
+**Explore the live dashboard here:**
+[**https://markov-chained.streamlit.app/**](https://markov-chained.streamlit.app/)
 
-The platform's primary objective is to transform disease surveillance from a reactive model to a **proactive, predictive public health tool**. Traditional clinical reliance causes a critical 7–14 day delay in recognizing outbreaks, allowing infectious diseases to spread widely and unnecessarily escalate containment costs.
+---
 
-#### 1.1. Wastewater-Based Epidemiology (WBE)
+> An AI-powered early warning system that analyzes wastewater data to predict clinical disease outbreaks 7 days in advance.
 
-WBE is the scientifically validated foundation underpinning the platform.
+## 1. The Problem
 
-  * **Early Detection:** Infected individuals shed viral and bacterial genetic material in their waste days before they exhibit symptoms or seek clinical testing.
-  * **Population Aggregation:** A single sewage sample represents the aggregated health status of over **100,000 people**, making this approach highly cost-efficient and non-intrusive.
-  * **Policy Alignment:** The Indian Council of Medical Research (ICMR) has formally acknowledged this potential and is actively scaling up surveillance across 50 cities, confirming the urgent domestic demand for this solution.
+Traditional disease surveillance is **reactive**. It identifies outbreaks only *after* people get sick and visit clinics. This delay leads to higher healthcare costs, economic disruption, and preventable illness. We need a system that can see an outbreak *before* it happens.
 
------
+## 2. Our Solution: SENTINEL
 
-### 2\. Technical Architecture and Model Innovation
+**SENTINEL** (**S**ewage-based **E**pidemiological **N**e**t**work for **I**ntelligence, **N**otification, and **E**arly **L**earning) is a proof-of-concept dashboard that uses Wastewater-Based Epidemiology (WBE).
 
-The core system integrates three distinct components, all engineered using the **PyTorch deep learning framework** to ensure performance and scalability.
+By analyzing sewage, we can detect viral RNA fragments 7-10 days before people show symptoms. Our AI model is trained on this data to find the "signal in the sewage" and forecast a spike in clinical cases **7 days in advance**. This gives public health officials critical lead time to act, allocate resources, and save lives.
 
-#### 2.1. AI Forecasting Engine (PyTorch LSTM)
+## 3. Key Features
 
-  * **Function:** Serves as the predictive engine, forecasting the magnitude and timing of future disease peaks via time-series analysis.
-  * **Model:** A **Long Short-Term Memory (LSTM)** neural network is utilized, selected for its proficiency in identifying complex, non-linear dependencies within sequential data.
-  * **Data Strategy (Validation Proxy):** The model was validated using a high-fidelity proxy: training involved using COVID-19 **`new_cases`** (the early indicator) to successfully predict the resulting spike in **`new_cases`** 7 days later (our proxy for severe outcomes/hospitalizations). This confirms the core predictive logic.
+The SENTINEL dashboard is built with three main components:
 
-#### 2.2. Pathogen Identification (PyTorch ResNet18)
+### 📈 AI Forecast
+The core of the system. This page features an **LSTM time-series model** trained on synthesized wastewater RNA data to predict future clinical cases.
+* **Interactive Slider:** Move the date slider to simulate time.
+* **3-Level Alert System:** The model generates a **Low**, **Medium**, or **Critical** alert based on the predicted 7-day spike.
 
-  * **Function:** Automates the labor-intensive laboratory bottleneck of classifying non-molecular pathogens (i.e., parasites) in microscopy images.
-  * **Model:** A **ResNet18** model is employed with **Transfer Learning**. It was initialized with ImageNet weights and fine-tuned on a **13% sample** of the 2.3GB HEMIC parasite microscopy dataset. This approach ensures rapid, high-accuracy classification capability.
+### 🗺️ Dynamic Hotspot Map
+Directly integrated with the AI forecast, this map provides an immediate visual representation of the alert level for **Hyderabad**.
+* **Stable:** All localities show small green dots.
+* **Medium Alert:** A few localities are randomly marked as red "hotspots."
+* **Critical Alert:** The map lights up with 10-15 red "hotspot" zones, showing the potential scale of the outbreak.
 
-#### 2.3. Geospatial Visualization and Network Analysis
+### 🔬 CV Pathogen Scanner
+This module is a **proof-of-concept** demonstrating the platform's AI capabilities for visual identification.
+* **Current Use (Demo):** A field-level aid. A health worker can get an instant ID for a single, isolated organism they don't recognize.
+* **Next Step (Production):** This model would be upgraded to an **object detection** model (like YOLO) to scan an entire microscope slide and provide a full pathogen count (e.g., "3 Ascaris, 5 Giardia").
 
-  * **Function:** Translates abstract AI alerts into actionable geographic intelligence.
-  * **Tools:** **GeoPandas** processes the India Drains Shapefiles, and **Folium** provides the interactive web mapping layer.
-  * **Actionable Intelligence:** The system dynamically colors the map based on the AI's predictions (e.g., coloring a drainage basin **RED** when a spike is forecasted), identifying the specific sewershed for targeted intervention.
+## 4. Tech Stack
 
------
+* **Dashboard:** Streamlit
+* **Machine Learning:** PyTorch (for LSTM & ResNet models)
+* **Data Manipulation:** Pandas, NumPy
+* **Data Preprocessing:** Scikit-learn (for MinMaxScaler, joblib)
+* **Geospatial Map:** Folium, streamlit-folium
+* **Utility:** Pillow, Plotly
 
-### 3\. Scalability and Future Roadmap
+## 5. How to Run Locally
 
-The architecture is engineered for rapid and cost-efficient scaling within the Indian urban context.
-
-#### 3.1. Operational and Economic Scaling
-
-  * **Cost Efficiency:** The entire citywide surveillance system is projected to cost approximately **₹2.5 crores**, achieving clear cost-benefit against the estimated **₹50+ crores** required to manage a single major epidemic.
-  * **Partnership Model:** The platform relies on partnering with **existing water quality and clinical laboratories**, minimizing initial capital expenditure and accelerating adoption.
-  * **Integration with IDSP:** The system is designed to integrate seamlessly with India's Integrated Disease Surveillance Programme (IDSP) to ensure early warning data translates into official, coordinated public health action.
-
-#### 3.2. Technical Expansion
-
-  * **Pathogen Diversification:** The core PyTorch LSTM framework and molecular lab protocols are inherently extensible, allowing for expansion to monitor threats such as **Antimicrobial Resistance (AMR) genes**, Influenza, and emerging viral variants.
-  * **Geospatial Growth:** Future work includes integrating **Digital Elevation Models (DEMs)** to model pathogen transport beyond centralized sewer lines into open drains and rural waterways, increasing surveillance coverage.
-
------
-
-### 4\. Local Deployment Guide
-
-To run the application, the environment must be correctly configured and all dependencies installed.
-
-#### 4.1. Prerequisites
-
-1.  **Python:** Python 3.9+ installed and a virtual environment (`.venv`) must be activated.
-2.  **Data Placement:** Ensure the following files are locally available in the correct structure:
-      * `data/owid-covid-data.csv`
-      * `data/archive/` (Unzipped HEMIC images)
-      * `gis/` (MAPOG Shapefiles: `.shp`, `.dbf`, `.shx`, etc.)
-3.  **Model Files (Critical Step):**
-    The trained models are **not included** in this repository due to file size restrictions. They must be obtained directly from the project owner (or your team's Google Drive) and placed in the **`models/`** folder:
-      * `forecast_model.pth`
-      * `cv_model.pth`
-      * `cv_class_names.txt`
-
-#### 4.2. Installation and Launch
-
-1.  **Install Dependencies:** Open your terminal in the main project directory and install all necessary libraries:
-
+1.  **Clone the repository:**
+    ```bash
+    git clone [https://github.com/cfcmadlad/sentinel-hack.git](https://github.com/cfcmadlad/sentinel-hack.git)
+    ```
+2.  **Navigate to the project directory:**
+    ```bash
+    cd sentinel-hack
+    ```
+3.  **Create and activate a virtual environment:**
+    ```bash
+    python -m venv .venv
+    .\.venv\Scripts\activate
+    ```
+4.  **Install the required libraries:**
     ```bash
     pip install -r requirements.txt
     ```
-
-2.  **Launch the Application:** Run the Streamlit application using the following command:
-
+5.  **Run the Streamlit app:**
     ```bash
     streamlit run app.py
     ```
 
-    The application will automatically open in your web browser.
+---
+
+## 🚀 View the Live App
+
+The app is hosted 24/7 on Streamlit Community Cloud:
+[**https://markov-chained.streamlit.app/**](https://markov-chained.streamlit.app/)
