@@ -1,0 +1,25 @@
+{
+    "model_name": "WastewaterLSTM",
+    "version": "1.0",
+    "trained_date": "2025-11-03",
+    "performance": {
+        "r2_score": -26.3236141204834,
+        "mae": 867.14404296875,
+        "rmse": 870.5392725202006
+    },
+    "config": {
+        "total_params": 31051,
+        "sequence_length": 30,
+        "lead_days": 7,
+        "hidden_size": 50,
+        "num_layers": 2
+    },
+    "data": {
+        "train_samples": 1648,
+        "test_samples": 413,
+        "date_range": [
+            "2020-01-01",
+            "2025-09-21"
+        ]
+    }
+}
