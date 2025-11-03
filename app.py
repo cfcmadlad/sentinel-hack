@@ -9,13 +9,12 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from PIL import Image
 import plotly.express as px
-# Note: Geopandas is no longer needed for this 'fake' map
 from streamlit_folium import st_folium
 import folium
 import os
 import glob 
 import joblib 
-import random # <-- NEW: Added for random hotspot selection
+import random 
 
 # --- 1. APP CONFIGURATION ---
 st.set_page_config(
@@ -142,7 +141,7 @@ def predict_parasite(image, model, class_names, transform, device):
     confidence, pred_idx = torch.max(probabilities, 0)
     return class_names[pred_idx.item()], confidence.item()
 
-# <<< UPDATED: Now 20 Hyderabad localities for a better demo ---
+# Hyderabad Hotspots (Unchanged)
 @st.cache_data
 def get_hyderabad_hotspots():
     data = {
@@ -157,9 +156,8 @@ def get_hyderabad_hotspots():
                 78.4521, 78.4230, 78.5247, 78.5496, 78.4747, 78.4795, 78.5601,
                 78.4870, 78.5165, 78.4979, 78.4353, 78.5684],
     }
-    # Add random risk scores
     df = pd.DataFrame(data)
-    np.random.seed(42) # Make the "random" risk consistent
+    np.random.seed(42) 
     df['risk_score'] = np.random.randint(5, 10, size=len(df))
     return df
 
@@ -171,13 +169,13 @@ with st.spinner('Warming up AI models and loading data...'):
         forecast_model, scaler_ww, scaler_clin, device_forecast = load_forecast_model_and_scalers()
         df_plot_data = load_new_data()
         cv_model, cv_class_names, cv_transform, device_cv = load_cv_model()
-        hotspot_data = get_hyderabad_hotspots() # Load Hyderabad data
+        hotspot_data = get_hyderabad_hotspots()
     except Exception as e:
         st.error(f"An unexpected error occurred during model loading: {e}")
         st.stop()
     
 if 'alert_level' not in st.session_state:
-    st.session_state['alert_level'] = "Low" # Default to Low
+    st.session_state['alert_level'] = "Low"
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Navigation")
@@ -192,7 +190,7 @@ if page == "AI Forecast":
     with col1: 
         st.markdown("This model uses **Wastewater RNA signals** to predict **Clinical Case peaks** 7 days in advance.")
         
-        # --- Data pipeline for chart ---
+        # Data pipeline
         scaled_ww = scaler_ww.transform(df_plot_data[['wastewater_viral_load']])
         scaled_clin = scaler_clin.transform(df_plot_data[['clinical_cases']])
         SEQ_LENGTH = 30  
@@ -209,7 +207,6 @@ if page == "AI Forecast":
             'Actual Clinical Cases': y_actual.flatten(),
             'Predicted Clinical Cases': all_predictions.flatten()
         }, index=plot_dates)
-        # --- End of data pipeline ---
 
         st.subheader("Select Date to Simulate")
         sim_date = st.slider(
@@ -221,15 +218,12 @@ if page == "AI Forecast":
         )
         sim_plot_df = plot_df.loc[:sim_date]
         
-        # <<< UPDATED: "Killer Demo" Logic now has 3 levels ---
+        # Alert Logic
         latest_actual = sim_plot_df['Actual Clinical Cases'].iloc[-1]
         latest_prediction = sim_plot_df['Predicted Clinical Cases'].iloc[-1]
-        
-        # Avoid division by zero if actual is 0
         spike_ratio = latest_prediction / (latest_actual + 1e-6) 
-        
-        HIGH_ALERT_THRESHOLD = 1.5 # 50% spike
-        MEDIUM_ALERT_THRESHOLD = 1.2 # 20% spike
+        HIGH_ALERT_THRESHOLD = 1.5
+        MEDIUM_ALERT_THRESHOLD = 1.2
 
         if spike_ratio > HIGH_ALERT_THRESHOLD and latest_prediction > 100: 
             st.error(f"**CRITICAL ALERT!** Predicted cases ({int(latest_prediction):,}) are spiking. This is a 7-day warning.")
@@ -245,17 +239,16 @@ if page == "AI Forecast":
         fig = px.line(sim_plot_df, title="AI Forecast vs. Actual Clinical Cases")
         st.plotly_chart(fig, use_container_width=True)
 
-    # <<< UPDATED: Map logic now uses 3 alert levels ---
     with col2:
         st.subheader("🗺️ Hyderabad Hotspot Map")
         
-        # Center the map on Hyderabad and zoom in
         map_center = [17.3850, 78.4867]
-        m = folium.Map(location=map_center, zoom_start=11, tiles="cartodbdarkmatter")
+        
+        # <<< CHANGED: Removed 'tiles' and 'attr' to use the default map
+        m = folium.Map(location=map_center, zoom_start=11)
 
         alert_level = st.session_state.get('alert_level', "Low")
         
-        # Randomly select localities to be "hotspots"
         if alert_level == "High":
             st.error("RISK LEVEL: HIGH. Multiple hotspots detected.")
             num_red = random.randint(10, 15)
@@ -266,31 +259,31 @@ if page == "AI Forecast":
             st.info("RISK LEVEL: LOW. All areas stable.")
             num_red = random.randint(0, 1)
 
-        # Split data into red (hotspot) and green (stable)
         red_localities = hotspot_data.sample(n=num_red)
         green_localities = hotspot_data.drop(red_localities.index)
 
-        # Add RED circles for hotspots
+        # Add RED circles
         for _, row in red_localities.iterrows():
             folium.CircleMarker(
                 location=[row['lat'], row['lon']],
-                radius=row['risk_score'],  # Scale radius by risk
+                radius=row['risk_score'],
                 popup=f"{row['location']}<br>Risk: {row['risk_score']} (HIGH)",
-                color='#E01F00', # Bright red
+                # <<< CHANGED: Red color is now darker and less "flashy"
+                color='#DC143C', # Crimson red
                 fill=True,
-                fill_color='#E01F00',
+                fill_color='#DC143C',
                 fill_opacity=0.6
             ).add_to(m)
 
-        # Add GREEN circles for stable sites
+        # Add GREEN circles
         for _, row in green_localities.iterrows():
             folium.CircleMarker(
                 location=[row['lat'], row['lon']],
-                radius=5, # Small, stable dots
+                radius=5, 
                 popup=f"{row['location']}<br>Status: Stable",
-                color='#00E090', # Bright green
+                color='#228B22', # Forest green
                 fill=True,
-                fill_color='#00E090',
+                fill_color='#228B22',
                 fill_opacity=0.6
             ).add_to(m)
 
@@ -302,7 +295,6 @@ if page == "AI Forecast":
 elif page == "CV Parasite Scan":
     st.header("🔬 Computer Vision: Pathogen Scanner")
     
-    # <<< UPDATED: Added explanation for its use ---
     st.markdown("""
     This module is a **proof-of-concept** demonstrating the platform's AI capabilities for visual identification.
 
