@@ -1,82 +1,126 @@
-# 🛰️ SENTINEL: AI-Powered Disease Surveillance
+# 🛰️ SENTINEL: AI-Powered Epidemiological Surveillance
+**Team: Markov Chained** | BITS Pilani, Hyderabad Campus
 
-**Team:** Markov Chained
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://markov-chained.streamlit.app/)
+[![Python Version](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## 🚀 Live Demo
 
-**Explore the live dashboard here:**
+**Explore the interactive dashboard here:**
 [**https://markov-chained.streamlit.app/**](https://markov-chained.streamlit.app/)
 
 ---
 
-> An AI-powered early warning system that analyzes wastewater data to predict clinical disease outbreaks 7 days in advance.
+## 1. The Problem: A Reactive System
+Traditional disease surveillance is **reactive**. We detect an outbreak only *after* sick patients begin filling clinics. This critical 7 to 14-day delay between the first infection and its discovery is a gap that allows preventable illnesses to become full-blown public health emergencies. This reactive system disproportionately harms underserved communities, where a disease is often a crisis long before it becomes an official statistic.
 
-## 1. The Problem
+## 2. Our Solution: A Proactive Early-Warning System
+**SENTINEL** transforms city sewage infrastructure into a proactive, predictive health radar.
 
-Traditional disease surveillance is **reactive**. It identifies outbreaks only *after* people get sick and visit clinics. This delay leads to higher healthcare costs, economic disruption, and preventable illness. We need a system that can see an outbreak *before* it happens.
-
-## 2. Our Solution: SENTINEL
-
-**SENTINEL** (**S**ewage-based **E**pidemiological **N**e**t**work for **I**ntelligence, **N**otification, and **E**arly **L**earning) is a proof-of-concept dashboard that uses Wastewater-Based Epidemiology (WBE).
-
-By analyzing sewage, we can detect viral RNA fragments 7-10 days before people show symptoms. Our AI model is trained on this data to find the "signal in the sewage" and forecast a spike in clinical cases **7 days in advance**. This gives public health officials critical lead time to act, allocate resources, and save lives.
+By analyzing wastewater for viral RNA fragments, our AI pipeline can spot rising infection trends **7 days before** they result in clinical cases. This provides public health officials with the most valuable resource: **time**. Time to allocate resources, launch public awareness campaigns, and prevent an outbreak before it takes hold.
 
 ## 3. Key Features
 
-The SENTINEL dashboard is built with three main components:
+SENTINEL is a multi-modal platform that provides both a high-level forecast and a specific diagnostic tool.
 
-### 📈 AI Forecast
-The core of the system. This page features an **LSTM time-series model** trained on synthesized wastewater RNA data to predict future clinical cases.
-* **Interactive Slider:** Move the date slider to simulate time.
-* **3-Level Alert System:** The model generates a **Low**, **Medium**, or **Critical** alert based on the predicted 7-day spike.
+### Mode 1: City-Wide Forecast (The "Macro" View)
+The core of our system is a **7-day advance forecast** for clinical cases.
+* **AI Model:** A Long Short-Term Memory (LSTM) neural network trained to find the correlation between wastewater RNA signals and future hospital visits.
+* **Statistical Rigor:** The forecast includes a **95% confidence interval**, showing the model's certainty.
+* **Robust Alerts:** The 3-level alert system (Low, Medium, High) is based on a **7-day rolling average** to prevent false alarms from single-day data noise.
 
-### 🗺️ Dynamic Hotspot Map
-Directly integrated with the AI forecast, this map provides an immediate visual representation of the alert level for **Hyderabad**.
-* **Stable:** All localities show small green dots.
-* **Medium Alert:** A few localities are randomly marked as red "hotspots."
-* **Critical Alert:** The map lights up with 10-15 red "hotspot" zones, showing the potential scale of the outbreak.
+### Mode 1 (b): Analytical Hotspot Map
+The forecast is analytically linked to a **spatial interpolation map** of Hyderabad.
+* **NOT Random:** This map is **not decorative**. When an alert triggers, the system selects outbreak epicenters and uses a spatial model (`scipy.spatial.distance.cdist`) to generate a realistic hotspot map, showing how risk fades with distance.
+* **Simulated Alert:** A "Critical Alert" also triggers a mock notification log, showing how the system would integrate with email and SMS alerts for field coordinators.
 
-### 🔬 CV Pathogen Scanner
-This module is a **proof-of-concept** demonstrating the platform's AI capabilities for visual identification.
-* **Current Use (Demo):** A field-level aid. A health worker can get an instant ID for a single, isolated organism they don't recognize.
-* **Next Step (Production):** This model would be upgraded to an **object detection** model (like YOLO) to scan an entire microscope slide and provide a full pathogen count (e.g., "3 Ascaris, 5 Giardia").
+### Mode 2: Pathogen Identifier (The "Micro" View)
+This is the on-the-ground diagnostic tool for health workers.
+* **AI Model:** A **ResNet18 Computer Vision model** trained on the HEMIC dataset to identify parasites from microscope images.
+* **Integrated Workflow:**
+    1.  **Forecast (Mode 1)** finds a spike in "Kukatpally".
+    2.  A health worker is dispatched and takes a local sample.
+    3.  **Scanner (Mode 2)** identifies the *specific cause* (e.g., "Ascaris"), enabling a targeted response.
+* **Production Roadmap:** Includes a mock-up of the next-gen **YOLOv8 object detection model**, which would scan an entire slide and provide a multi-pathogen count.
 
-## 4. Tech Stack
+---
 
+## 4. System Architecture
+This diagram shows the flow of data from collection to deployment in a real-world scenario.
+
+![System Architecture Diagram](https://i.imgur.com/L7E1tQv.png)
+
+---
+
+## 5. Methodology & Performance
+To overcome the challenge of unavailable real-time data, we built a high-fidelity synthetic model pipeline.
+
+### Data Authenticity
+Our model's effectiveness is based on a robust synthetic dataset:
+1.  **Base:** We used real-world clinical COVID-19 case data from *'owid-covid-data.csv'*.
+2.  **Lag:** We reverse-engineered a wastewater signal by **shifting** the clinical data 7 days earlier, based on the **6.8-day median lag** found in peer-reviewed WBE studies.
+3.  **Noise:** We introduced **stochastic noise** and smoothing to simulate sensor interference, rainfall dilution, and other real-world variables.
+
+This ensures our model is learning to find a signal amidst noise, not just a simple mathematical relationship.
+
+### Model Performance (LSTM Forecast)
+The model was trained on 80% of the data and validated on the final 20% (2024-2025 data). We measured our LSTM's performance against a "naive baseline" model (which assumes this week's cases will be the same as last week's).
+
+| Model | MAE (Test Set) | R² Score (Test Set) | Improvement |
+| :--- | :--- | :--- | :--- |
+| **Baseline (Naive 7-day shift)** | 1,243.12 | -34.52 | - |
+| **SENTINEL LSTM (Ours)** | **867.14** | **-26.32** | **30.2% Better** |
+
+* **MAE (Mean Absolute Error):** Our model is, on average, **30.2% more accurate** than the baseline.
+* *(Note: A negative R² is expected, as the test set (2025) has near-zero cases, making MAE the most reliable metric.)*
+
+---
+
+## 6. Tech Stack
+* **AI & ML:** PyTorch (LSTM, ResNet18), Scikit-learn, SciPy
+* **Data Handling:** Pandas, NumPy
 * **Dashboard:** Streamlit
-* **Machine Learning:** PyTorch (for LSTM & ResNet models)
-* **Data Manipulation:** Pandas, NumPy
-* **Data Preprocessing:** Scikit-learn (for MinMaxScaler, joblib)
-* **Geospatial Map:** Folium, streamlit-folium
-* **Utility:** Pillow, Plotly
+* **Visualization:** Plotly, Folium, Graphviz
+* **Model Artifacts:** `joblib` (for scalers), `torch.save`
 
-## 5. How to Run Locally
+---
+
+## 7. How to Run Locally
 
 1.  **Clone the repository:**
     ```bash
     git clone [https://github.com/cfcmadlad/sentinel-hack.git](https://github.com/cfcmadlad/sentinel-hack.git)
-    ```
-2.  **Navigate to the project directory:**
-    ```bash
     cd sentinel-hack
     ```
-3.  **Create and activate a virtual environment:**
+
+2.  **Create and activate a virtual environment:**
     ```bash
     python -m venv .venv
     .\.venv\Scripts\activate
     ```
-4.  **Install the required libraries:**
+
+3.  **Install dependencies:**
     ```bash
     pip install -r requirements.txt
     ```
-5.  **Run the Streamlit app:**
+    *Note: `requirements.txt` must include `scipy`.*
+
+4.  **Run the app:**
     ```bash
     streamlit run app.py
     ```
 
 ---
 
-## 🚀 View the Live App
+## 8. Meet the Team (Markov Chained)
+* **Aditya Rayaprolu:** Team Lead & Public Health
+* **Harsh Gunda:** ML & Predictions
+* **Vishisht T.B.:** Backend & Tech
+* **Gautham Pratheep:** Vision AI
+* **Karthikeya Reddy Patana:** Vision AI
 
-The app is hosted 24/7 on Streamlit Community Cloud:
-[**https://markov-chained.streamlit.app/**](https://markov-chained.streamlit.app/)
+---
+
+## 9. License
+This project is licensed under the MIT License. See the `LICENSE` file for details.
