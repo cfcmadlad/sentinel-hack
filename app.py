@@ -23,36 +23,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. MODEL & DATA LOADING ---
+# --- 2. MODEL & DATA LOADING (All Unchanged) ---
 
-# LSTM Model Class (Unchanged)
-class LSTMModel(nn.Module):
-    def __init__(self, input_size=1, hidden_size=50, num_layers=2, output_size=1, dropout=0.2):
-        super(LSTMModel, self).__init__()
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, 
-                            batch_first=True, dropout=dropout)
-        self.fc = nn.Linear(hidden_size, output_size)
-
-    def forward(self, x):
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-        out, _ = self.lstm(x, (h0, c0))  
-        out = self.fc(out[:, -1, :])
-        return out
-
-# Sequence Helper (Unchanged)
-def create_sequences(case_data, target_data, seq_length, prediction_delay):
-    xs, ys = [], []
-    for i in range(len(case_data) - seq_length - prediction_delay):
-        x = case_data[i:(i + seq_length)]
-        y = target_data[i + seq_length + prediction_delay - 1]
-        xs.append(x)
-        ys.append(y)
-    return np.array(xs), np.array(ys)
-
-# Load Forecast Model (Unchanged)
 @st.cache_resource
 def load_forecast_model_and_scalers():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -76,7 +48,6 @@ def load_forecast_model_and_scalers():
     
     return model, scaler_wastewater, scaler_clinical, device
 
-# Load Synthesized Data (Unchanged)
 @st.cache_data
 def load_new_data():
     data_path = 'models/synthesized_wastewater_data.csv' 
@@ -99,7 +70,6 @@ def load_new_data():
     df_model_data = df[required_cols].astype(np.float32)
     return df_model_data
 
-# Load CV Model (Unchanged)
 @st.cache_resource
 def load_cv_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -130,7 +100,6 @@ def load_cv_model():
     ])
     return model, class_names, transform, device
 
-# Predict Parasite (Unchanged)
 def predict_parasite(image, model, class_names, transform, device):
     img_pil = Image.open(image).convert('RGB')
     img_t = transform(img_pil)
@@ -141,7 +110,6 @@ def predict_parasite(image, model, class_names, transform, device):
     confidence, pred_idx = torch.max(probabilities, 0)
     return class_names[pred_idx.item()], confidence.item()
 
-# Hyderabad Hotspots (Unchanged)
 @st.cache_data
 def get_hyderabad_hotspots():
     data = {
@@ -161,9 +129,17 @@ def get_hyderabad_hotspots():
     df['risk_score'] = np.random.randint(5, 10, size=len(df))
     return df
 
-# --- 3. THE APPLICATION INTERFACE ---
-st.title("🛰️ SENTINEL: AI Disease Surveillance Dashboard")
+def create_sequences(case_data, target_data, seq_length, prediction_delay):
+    xs, ys = [], []
+    for i in range(len(case_data) - seq_length - prediction_delay):
+        x = case_data[i:(i + seq_length)]
+        y = target_data[i + seq_length + prediction_delay - 1]
+        xs.append(x)
+        ys.append(y)
+    return np.array(xs), np.array(ys)
 
+
+# --- 3. LOAD ALL DATA ---
 with st.spinner('Warming up AI models and loading data...'):
     try:
         forecast_model, scaler_ww, scaler_clin, device_forecast = load_forecast_model_and_scalers()
@@ -177,20 +153,39 @@ with st.spinner('Warming up AI models and loading data...'):
 if 'alert_level' not in st.session_state:
     st.session_state['alert_level'] = "Low"
 
-# --- Sidebar Navigation ---
+# --- 4. SIDEBAR NAVIGATION ---
 st.sidebar.title("Navigation")
-page = st.sidebar.radio("Go to:", ["AI Forecast", "CV Parasite Scan"]) 
+page = st.sidebar.radio("Go to:", 
+    ["🛰️ Live Dashboard", "🔬 Pathogen Scanner", "📖 About the Project"]
+) 
+
+# <<< NEW: Language Placeholder >>>
+st.sidebar.divider()
+st.sidebar.selectbox("Language", ['English (EN)', 'हिन्दी (HI) - Coming Soon'])
+
+
+# --- 5. APPLICATION INTERFACE ---
 
 # --- PAGE 1: AI FORECAST ---
-if page == "AI Forecast":
-    st.header("📈 AI-Powered Outcome Forecast")
+if page == "🛰️ Live Dashboard":
+    st.title("🛰️ SENTINEL: Live Forecast")
+    
+    # <<< NEW: Graph Explanation >>>
+    with st.expander("What do these graphs indicate?"):
+        st.markdown("""
+        This dashboard shows the core power of **SENTINEL**: predicting the future.
+        
+        * **The Data:** The data is **synthesized** for this demo. We used real-world COVID-19 clinical case data (from *Our World in Data*) and mathematically generated a realistic, corresponding wastewater RNA signal. In the real world, this would be fed by live data from city-wide sensors.
+        * **The Solid Line (Actual):** This shows the *actual* number of clinical cases reported on that day.
+        * **The Dotted Line (Predicted):** This is our AI's prediction. It was made **7 days earlier** using *only* the wastewater data from the previous 30 days.
+        
+        **The Goal:** The closer the dotted line (prediction) tracks the solid line (actual), the more accurate our 7-day warning system is.
+        """)
     
     col1, col2 = st.columns([0.6, 0.4]) 
 
     with col1: 
-        st.markdown("This model uses **Wastewater RNA signals** to predict **Clinical Case peaks** 7 days in advance.")
-        
-        # Data pipeline
+        # --- Data pipeline for chart ---
         scaled_ww = scaler_ww.transform(df_plot_data[['wastewater_viral_load']])
         scaled_clin = scaler_clin.transform(df_plot_data[['clinical_cases']])
         SEQ_LENGTH = 30  
@@ -243,9 +238,7 @@ if page == "AI Forecast":
         st.subheader("🗺️ Hyderabad Hotspot Map")
         
         map_center = [17.3850, 78.4867]
-        
-        # <<< CHANGED: Removed 'tiles' and 'attr' to use the default map
-        m = folium.Map(location=map_center, zoom_start=11)
+        m = folium.Map(location=map_center, zoom_start=11) # Default OpenStreetMap
 
         alert_level = st.session_state.get('alert_level', "Low")
         
@@ -268,7 +261,6 @@ if page == "AI Forecast":
                 location=[row['lat'], row['lon']],
                 radius=row['risk_score'],
                 popup=f"{row['location']}<br>Risk: {row['risk_score']} (HIGH)",
-                # <<< CHANGED: Red color is now darker and less "flashy"
                 color='#DC143C', # Crimson red
                 fill=True,
                 fill_color='#DC143C',
@@ -287,25 +279,31 @@ if page == "AI Forecast":
                 fill_opacity=0.6
             ).add_to(m)
 
-        # Display the map
         st_folium(m, width=700, height=500)
 
 
 # --- PAGE 2: CV PARASITE SCAN ---
-elif page == "CV Parasite Scan":
-    st.header("🔬 Computer Vision: Pathogen Scanner")
+elif page == "🔬 Pathogen Scanner":
+    st.title("🔬 Computer Vision: Pathogen Scanner")
     
     st.markdown("""
     This module is a **proof-of-concept** demonstrating the platform's AI capabilities for visual identification.
-
-    **Its Current Use (Demo):**
-    * **Field-Level Aid:** A health worker can use their phone to get an instant ID for a single, isolated organism they don't recognize.
-    
-    **The Next Step (Production Version):**
-    * The model would be upgraded to an **object detection** model (like YOLO).
-    * This would allow it to scan an *entire* microscope slide, place boxes around *all* parasites, and provide a full count (e.g., "3 Ascaris, 5 Giardia"), which is far more powerful for diagnostics.
     """)
     
+    # <<< NEW: "How we did it" section >>>
+    with st.expander("How this feature works (and its assumptions)"):
+        st.markdown("""
+        * **How we did it:** We fine-tuned a pre-trained **ResNet18** model, a powerful Computer Vision algorithm, on a public dataset of parasite images. The model learns to identify the unique visual features of each organism.
+        * **Assumptions:** This tool assumes the uploaded image is a clear, in-focus microscope slide of a single, isolated organism.
+        
+        **Its Current Use (Demo):**
+        * **Field-Level Aid:** A health worker can use their phone to get an instant ID for a single organism they don't recognize.
+        
+        **The Next Step (Production Version):**
+        * The model would be upgraded to an **object detection** model (like YOLO).
+        * This would allow it to scan an *entire* microscope slide, place boxes around *all* parasites, and provide a full count (e.g., "3 Ascaris, 5 Giardia"), which is far more powerful for diagnostics.
+        """)
+
     uploaded_file = st.file_uploader("Upload a microscope image...", type=["jpg", "jpeg", "png"])
     
     if uploaded_file is not None:
@@ -315,3 +313,63 @@ elif page == "CV Parasite Scan":
             st.success(f"**Pathogen Detected!**")
             st.metric(label="Organism", value=parasite_name.title())
             st.metric(label="Confidence", value=f"{confidence * 100:.2f}%")
+
+# --- PAGE 3: ABOUT THE PROJECT ---
+elif page == "📖 About the Project":
+    st.title("📖 About SENTINEL")
+    
+    # <<< NEW: Team Section >>>
+    st.header("About the Team")
+    st.markdown("""
+    We are **Team Markov Chained**, a group of developers passionate about using AI for public good.
+    
+    * **Team Member 1:** (Your Name)
+    * **Team Member 2:** (Teammate's Name)
+    * **Team Member 3:** (Teammate's Name)
+    * *(Add as many as you need)*
+    """)
+    
+    st.divider()
+
+    # <<< NEW: FAQ Section >>>
+    st.header("Frequently Asked Questions (FAQ)")
+
+    with st.expander("Where does the forecast data come from?"):
+        st.markdown("""
+        For this hackathon, the data is **synthesized**. We built a "data synthesizer" in our Colab notebook that:
+        1.  Takes **real-world** clinical case data (from *Our World in Data*).
+        2.  Mathematically **simulates** a realistic wastewater RNA signal that would have preceded those clinical cases by 7 days.
+        
+        This gives our AI a realistic dataset to train on without needing access to a live, city-wide sensor network (which we would integrate in a real-world version).
+        """)
+
+    with st.expander("What are the core assumptions of the AI model?"):
+        st.markdown("""
+        Our model operates on a few key assumptions, which is standard for a proof-of-concept:
+        
+        1.  **Consistent Lag Time:** We assume a consistent 7-day average lag between wastewater signal detection and clinical case reporting.
+        2.  **Signal Correlation:** We assume that the *volume* of RNA fragments in the sewage directly correlates with the *number* of eventual clinical cases.
+        3.  **Data Completeness:** We assume the synthesized data is a good proxy for a real-world, clean dataset.
+        """)
+
+    with st.expander("What AI models are being used?"):
+        st.markdown("""
+        SENTINEL uses two main AI models:
+        
+        1.  **Time-Series Forecast:** A **Long Short-Term Memory (LSTM)** neural network. This type of model is excellent at finding patterns in sequences of data over time, which is perfect for forecasting.
+        2.  **Pathogen Scanner:** A **ResNet18** Convolutional Neural Network (CNN). This is a powerful, pre-trained image recognition model that we fine-tuned to identify parasites.
+        """)
+    
+    st.divider()
+
+    # <<< NEW: Data/Privacy Section >>>
+    st.header("Our Data & Privacy Philosophy")
+    st.info("**Does this app save my data?** \n\n**No.** This demo app is completely self-contained. It does not save any data you upload (like microscope images) and does not log your location or interaction.", icon="💡")
+
+    st.markdown("""
+    #### Future Goal: A Data Enhancement Pipeline
+    
+    In a real-world production version of SENTINEL, we would implement a **Federated Learning** model.
+    
+    This means the model would be enhanced using data from hospitals and clinics **without that data ever leaving their private servers**. The model sends code *to* the data, trains locally, and only sends back the anonymous "lessons" it learned. This allows the central SENTINEL model to become more accurate for everyone while maintaining 100% patient privacy.
+    """)
