@@ -18,11 +18,14 @@ import random
 import math
 from scipy.spatial.distance import cdist
 
+# --- 1. APP CONFIGURATION ---
 st.set_page_config(
     page_title="SENTINEL Dashboard",
     page_icon="🛰️",
     layout="wide"
 )
+
+# --- 2. MODEL & DATA LOADING ---
 
 class LSTMModel(nn.Module):
     def __init__(self, input_size=1, hidden_size=50, num_layers=2, output_size=1, dropout=0.2):
@@ -347,6 +350,13 @@ elif page == "🔬 Mode 2: Pathogen Identifier (Micro)":
         st.markdown("""
         * **How we did it:** We fine-tuned a pre-trained **ResNet18** model, a powerful Computer Vision algorithm, on a public dataset of parasite images (the HEMIC dataset).
         * **Assumptions:** This tool assumes the uploaded image is a clear, in-focus microscope slide of a single, isolated organism.
+        
+        **Its Current Use (Demo):**
+        * **Field-Level Aid:** A health worker can use their phone to get an instant ID for a single organism they don't recognize.
+        
+        **The Next Step (Production Version):**
+        * The model would be upgraded to an **object detection** model (like YOLO).
+        * This would allow it to scan an *entire* microscope slide, place boxes around *all* parasites, and provide a full count (e.g., "3 Ascaris, 5 Giardia"), which is far more powerful for diagnostics.
         """)
 
     uploaded_file = st.file_uploader("Upload a microscope image...", type=["jpg", "jpeg", "png"])
@@ -358,18 +368,6 @@ elif page == "🔬 Mode 2: Pathogen Identifier (Micro)":
             st.success(f"**Pathogen Detected!**")
             st.metric(label="Organism", value=parasite_name.title())
             st.metric(label="Confidence", value=f"{confidence * 100:.2f}%")
-
-    st.divider()
-    st.subheader("🚀 Production Preview: Multi-Pathogen Detection")
-    try:
-        st.image("demo_yolo_output.jpg", caption="FUTURE: YOLOv8-based detection: 3 Ascaris, 2 Giardia detected")
-    except:
-        st.warning("Could not load 'demo_yolo_output.jpg'. Please add this demo image to your project folder.")
-    st.info("""
-    This preview shows our production roadmap. The current single-image
-    classifier will be upgraded to an **object detection** model (like YOLOv8) for real-time,
-    multi-organism detection on full microscope slides.
-    """)
 
 elif page == "📖 About the Project":
     st.title("📖 About SENTINEL")
@@ -458,8 +456,8 @@ elif page == "📖 About the Project":
     
     st.subheader("Pathogen Scanner Model (ResNet18)")
     st.markdown("""
-    * **Methodology:** We used transfer learning to fine-tune a pre-trained **ResNet18** model on a 13% sample of the public **HEMIC dataset**. [cite: 1466]
-    * **Performance:** The model achieved **98.34% accuracy** on the final training epoch. [cite: 1470]
+    * **Methodology:** We used transfer learning to fine-tune a pre-trained **ResNet18** model on a 13% sample of the public **HEMIC dataset**.
+    * **Performance:** The model achieved **98.34% accuracy** on the final training epoch.
     """)
 
     st.divider()
@@ -470,9 +468,9 @@ elif page == "📖 About the Project":
         st.markdown("""
         For this prototype, real-time sensor data was unavailable. We created a **high-fidelity synthetic dataset** by:
         
-        1.  Taking **real-world** clinical case data from *'owid-covid-data.csv'*. [cite: 1531]
-        2.  Reverse-engineering a wastewater signal by **shifting** the clinical data 7 days earlier. [cite: 1573]
-        3.  Adding **stochastic (random) noise** [cite: 1580] and **data smoothing** [cite: 1592] to simulate sensor interference, non-linear shedding, and dilution.
+        1.  Taking **real-world** clinical case data from *'owid-covid-data.csv'*.
+        2.  Reverse-engineering a wastewater signal by **shifting** the clinical data 7 days earlier.
+        3.  Adding **stochastic (random) noise** and **data smoothing** to simulate sensor interference, non-linear shedding, and dilution.
         
         This ensures our model is learning to find a signal amidst realistic noise, not just a simple mathematical function.
         """)
