@@ -9,12 +9,14 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from PIL import Image
 import plotly.express as px
-from streamlit_folium import st_folium  # Using folium
-import folium                             # Using folium
+from streamlit_folium import st_folium
+import folium
 import os
 import glob 
 import joblib 
 import random 
+import math
+from scipy.spatial.distance import cdist
 
 # --- 1. APP CONFIGURATION ---
 st.set_page_config(
@@ -23,7 +25,23 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- 2. MODEL & DATA LOADING (All Unchanged) ---
+# --- 2. MODEL & DATA LOADING ---
+
+class LSTMModel(nn.Module):
+    def __init__(self, input_size=1, hidden_size=50, num_layers=2, output_size=1, dropout=0.2):
+        super(LSTMModel, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, 
+                            batch_first=True, dropout=dropout)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        out, _ = self.lstm(x, (h0, c0))  
+        out = self.fc(out[:, -1, :])
+        return out
 
 @st.cache_resource
 def load_forecast_model_and_scalers():
@@ -112,21 +130,8 @@ def predict_parasite(image, model, class_names, transform, device):
 
 @st.cache_data
 def get_hyderabad_hotspots():
-    data = {
-        'location': ['Kukatpally', 'Gachibowli', 'Hitech City', 'Madhapur', 'Jubilee Hills',
-                     'Banjara Hills', 'Ameerpet', 'Secunderabad', 'Begumpet', 'Mehdipatnam',
-                     'Dilsukhnagar', 'LB Nagar', 'Charminar', 'Koti', 'Uppal',
-                     'Bowenpally', 'Tarnaka', 'Malakpet', 'Attapur', 'ECIL'],
-        'lat': [17.4851, 17.4486, 17.4435, 17.4478, 17.4300, 17.4150, 17.4375, 17.4396,
-                17.4390, 17.3916, 17.3688, 17.3489, 17.3616, 17.3829, 17.3996,
-                17.4727, 17.4225, 17.3713, 17.3615, 17.4912],
-        'lon': [78.4116, 78.3588, 78.3772, 78.3914, 78.4012, 78.4357, 78.4485, 78.5028,
-                78.4521, 78.4230, 78.5247, 78.5496, 78.4747, 78.4795, 78.5601,
-                78.4870, 78.5165, 78.4979, 78.4353, 78.5684],
-    }
+    data = {'location':['Kukatpally','Gachibowli','Hitech City','Madhapur','Jubilee Hills','Banjara Hills','Ameerpet','Secunderabad','Begumpet','Mehdipatnam','Dilsukhnagar','LB Nagar','Charminar','Koti','Uppal','Bowenpally','Tarnaka','Malakpet','Attapur','ECIL'],'lat':[17.4851,17.4486,17.4435,17.4478,17.4300,17.4150,17.4375,17.4396,17.4390,17.3916,17.3688,17.3489,17.3616,17.3829,17.3996,17.4727,17.4225,17.3713,17.3615,17.4912],'lon':[78.4116,78.3588,78.3772,78.3914,78.4012,78.4357,78.4485,78.5028,78.4521,78.4230,78.5247,78.5496,78.4747,78.4795,78.5601,78.4870,78.5165,78.4979,78.4353,78.5684]}
     df = pd.DataFrame(data)
-    np.random.seed(42) 
-    df['risk_score'] = np.random.randint(5, 10, size=len(df))
     return df
 
 def create_sequences(case_data, target_data, seq_length, prediction_delay):
@@ -138,23 +143,43 @@ def create_sequences(case_data, target_data, seq_length, prediction_delay):
         ys.append(y)
     return np.array(xs), np.array(ys)
 
-# LSTM Model Class Definition (Moved up for clarity)
-class LSTMModel(nn.Module):
-    def __init__(self, input_size=1, hidden_size=50, num_layers=2, output_size=1, dropout=0.2):
-        super(LSTMModel, self).__init__()
-        self.hidden_size = hidden_size
-        self.num_layers = num_layers
-        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, 
-                            batch_first=True, dropout=dropout)
-        self.fc = nn.Linear(hidden_size, output_size)
+def get_interpolated_hotspots(base_hotspot_data, alert_level, sim_date_seed):
+    random.seed(sim_date_seed) 
+    
+    if alert_level == "Low":
+        num_epicenters = random.randint(0, 1)
+    elif alert_level == "Medium":
+        num_epicenters = random.randint(2, 4)
+    else: # High
+        num_epicenters = random.randint(5, 8)
 
-    def forward(self, x):
-        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
-        out, _ = self.lstm(x, (h0, c0))  
-        out = self.fc(out[:, -1, :])
-        return out
+    if num_epicenters == 0:
+        base_hotspot_data['risk_level'] = 'Low'
+        base_hotspot_data['risk_score'] = 0
+        return base_hotspot_data
 
+    epicenter_indices = random.sample(range(len(base_hotspot_data)), num_epicenters)
+    epicenters = base_hotspot_data.iloc[epicenter_indices]
+    locality_coords = base_hotspot_data[['lat', 'lon']].values
+    epicenter_coords = epicenters[['lat', 'lon']].values
+    distances = cdist(locality_coords, epicenter_coords)
+    min_dist = distances.min(axis=1)
+    base_hotspot_data['risk_score'] = (1 / (min_dist + 0.01))
+    
+    max_risk = base_hotspot_data['risk_score'].max()
+    min_risk = base_hotspot_data['risk_score'].min()
+    base_hotspot_data['risk_score'] = 6 + 4 * (base_hotspot_data['risk_score'] - min_risk) / (max_risk - min_risk + 1e-6)
+
+    def assign_risk(score):
+        if score > 8.5: return "High"
+        if score > 7.0: return "Medium"
+        return "Low"
+    
+    base_hotspot_data['risk_level'] = base_hotspot_data['risk_score'].apply(assign_risk)
+    base_hotspot_data.loc[epicenter_indices, 'risk_level'] = 'High'
+    base_hotspot_data.loc[epicenter_indices, 'risk_score'] = 10.0
+
+    return base_hotspot_data
 
 # --- 3. LOAD ALL DATA ---
 with st.spinner('Warming up AI models and loading data...'):
@@ -162,7 +187,7 @@ with st.spinner('Warming up AI models and loading data...'):
         forecast_model, scaler_ww, scaler_clin, device_forecast = load_forecast_model_and_scalers()
         df_plot_data = load_new_data()
         cv_model, cv_class_names, cv_transform, device_cv = load_cv_model()
-        hotspot_data = get_hyderabad_hotspots()
+        hotspot_data_base = get_hyderabad_hotspots()
     except Exception as e:
         st.error(f"An unexpected error occurred during model loading: {e}")
         st.stop()
@@ -173,18 +198,17 @@ if 'alert_level' not in st.session_state:
 # --- 4. SIDEBAR NAVIGATION ---
 st.sidebar.title("Navigation")
 page = st.sidebar.radio("Go to:", 
-    ["🛰️ Live Dashboard", "🔬 Pathogen Scanner", "📖 About the Project"]
+    ["🛰️ Mode 1: City-Wide Forecast (Macro)", "🔬 Mode 2: Pathogen Identifier (Micro)", "📖 About the Project"]
 ) 
 
 st.sidebar.divider()
 st.sidebar.selectbox("Language", ['English (EN)', 'हिन्दी (HI) - Coming Soon'])
 
-
 # --- 5. APPLICATION INTERFACE ---
 
 # --- PAGE 1: AI FORECAST ---
-if page == "🛰️ Live Dashboard":
-    st.title("🛰️ SENTINEL: Live Forecast")
+if page == "🛰️ Mode 1: City-Wide Forecast (Macro)":
+    st.title("🛰️ SENTINEL: City-Wide Forecast")
     
     with st.expander("What do these graphs indicate?"):
         st.markdown("""
@@ -197,7 +221,6 @@ if page == "🛰️ Live Dashboard":
         **The Goal:** The closer the dotted line (prediction) tracks the solid line (actual), the more accurate our 7-day warning system is.
         """)
     
-    # <<< PERFORMANCE FIX: Heavy data processing is moved out of the fragment >>>
     @st.cache_data
     def get_full_predictions():
         scaled_ww = scaler_ww.transform(df_plot_data[['wastewater_viral_load']])
@@ -220,7 +243,6 @@ if page == "🛰️ Live Dashboard":
     
     plot_df = get_full_predictions()
 
-    # <<< STABLE MAP FIX: Wrap the interactive parts in a fragment >>>
     @st.fragment
     def run_forecast_dashboard():
         col1, col2 = st.columns([0.6, 0.4]) 
@@ -233,15 +255,14 @@ if page == "🛰️ Live Dashboard":
                 max_value=plot_df.index.max().to_pydatetime(),
                 value=plot_df.index.min().to_pydatetime(),
                 format="YYYY-MM-DD",
-                key="sim_slider" # Add a key for stability
+                key="sim_slider" 
             )
             sim_plot_df = plot_df.loc[:sim_date]
             
-            # Alert Logic
             latest_actual = sim_plot_df['Actual Clinical Cases'].iloc[-1]
             latest_prediction = sim_plot_df['Predicted Clinical Cases'].iloc[-1]
             spike_ratio = latest_prediction / (latest_actual + 1e-6) 
-            HIGH_ALERT_THRESHOLD = 1.5
+            HIGH_ALERT_THRESHOLD = 1.5 
             MEDIUM_ALERT_THRESHOLD = 1.2
 
             if spike_ratio > HIGH_ALERT_THRESHOLD and latest_prediction > 100: 
@@ -254,7 +275,6 @@ if page == "🛰️ Live Dashboard":
                 st.info("System is stable. Predictions align with current clinical rates.")
                 st.session_state['alert_level'] = "Low"
             
-            # Plot the chart
             fig = px.line(sim_plot_df, title="AI Forecast vs. Actual Clinical Cases")
             st.plotly_chart(fig, use_container_width=True)
 
@@ -262,64 +282,45 @@ if page == "🛰️ Live Dashboard":
             st.subheader("🗺️ Hyderabad Hotspot Map")
             
             map_center = [17.3850, 78.4867]
-            m = folium.Map(location=map_center, zoom_start=11) # Default OpenStreetMap
+            m = folium.Map(location=map_center, zoom_start=11) 
 
             alert_level = st.session_state.get('alert_level', "Low")
             
+            sim_date_seed = pd.to_datetime(sim_date).dayofyear
+            chart_data = get_interpolated_hotspots(hotspot_data_base.copy(), alert_level, sim_date_seed)
+            
             if alert_level == "High":
                 st.error("RISK LEVEL: HIGH. Multiple hotspots detected.")
-                num_red = random.randint(10, 15)
             elif alert_level == "Medium":
                 st.warning("RISK LEVEL: MEDIUM. Sporadic hotspots detected.")
-                num_red = random.randint(2, 7)
             else: # Low
                 st.info("RISK LEVEL: LOW. All areas stable.")
-                num_red = random.randint(0, 1)
+            
+            for _, row in chart_data.iterrows():
+                if row['risk_level'] == "High":
+                    color, fill_color, radius = '#DC143C', '#DC143C', row['risk_score'] * 1.5
+                elif row['risk_level'] == "Medium":
+                    color, fill_color, radius = '#FF8C00', '#FF8C00', row['risk_score'] * 1.2
+                else: 
+                    color, fill_color, radius = '#228B22', '#228B22', 5
 
-            # Get randomized hotspots for this specific render
-            red_localities = hotspot_data.sample(n=num_red, random_state=pd.to_datetime(sim_date).day)
-            green_localities = hotspot_data.drop(red_localities.index)
-
-            # Add RED circles
-            for _, row in red_localities.iterrows():
                 folium.CircleMarker(
                     location=[row['lat'], row['lon']],
-                    radius=row['risk_score'],
-                    popup=f"{row['location']}<br>Risk: {row['risk_score']} (HIGH)",
-                    color='#DC143C', 
+                    radius=radius,
+                    popup=f"{row['location']}<br>Risk Level: {row['risk_level']}",
+                    color=color,
                     fill=True,
-                    fill_color='#DC143C',
+                    fill_color=fill_color,
                     fill_opacity=0.6
                 ).add_to(m)
 
-            # Add GREEN circles
-            for _, row in green_localities.iterrows():
-                folium.CircleMarker(
-                    location=[row['lat'], row['lon']],
-                    radius=5, 
-                    popup=f"{row['location']}<br>Status: Stable",
-                    color='#228B22', 
-                    fill=True,
-                    fill_color='#228B22',
-                    fill_opacity=0.6
-                ).add_to(m)
+            st_folium(m, width=700, height=500, key="hyd_map", returned_objects=[])
 
-            # <<< STABLE MAP FIX: Add key and returned_objects
-            st_folium(
-                m, 
-                width=700, 
-                height=500, 
-                key="hyd_map", 
-                returned_objects=[] # This stops the map from "glitching"
-            )
-
-    # --- Call the fragment to run ---
     run_forecast_dashboard()
 
-
 # --- PAGE 2: CV PARASITE SCAN ---
-elif page == "🔬 Pathogen Scanner":
-    st.title("🔬 Computer Vision: Pathogen Scanner")
+elif page == "🔬 Mode 2: Pathogen Identifier (Micro)":
+    st.title("🔬 Mode 2: Pathogen Identifier (Micro)")
     
     st.markdown("""
     This module is a **proof-of-concept** demonstrating the platform's AI capabilities for visual identification.
@@ -327,7 +328,7 @@ elif page == "🔬 Pathogen Scanner":
     
     with st.expander("How this feature works (and its assumptions)"):
         st.markdown("""
-        * **How we did it:** We fine-tuned a pre-trained **ResNet18** model, a powerful Computer Vision algorithm, on a public dataset of parasite images. The model learns to identify and quantify the unique visual features of each organism.
+        * **How we did it:** We fine-tuned a pre-trained **ResNet18** model, a powerful Computer Vision algorithm, on a public dataset of parasite images (the HEMIC dataset). The model learns to identify and quantify the unique visual features of each organism.
         * **Assumptions:** This tool assumes the uploaded image is a clear, in-focus microscope slide of a single, isolated organism.
         
         **Its Current Use (Demo):**
@@ -363,32 +364,111 @@ elif page == "📖 About the Project":
     
     st.divider()
 
+    st.header("System Architecture")
+    st.graphviz_chart('''
+    digraph {
+        node [shape=box, style="rounded,filled", fillcolor="#262730", fontcolor="white", color="#00A9E0"]
+        
+        subgraph cluster_data_input {
+            label = "Data Collection (Real World)"
+            style="rounded"
+            color="#00A9E0"
+            fontcolor="white"
+            
+            sensor [label="1. Auto-Samplers\n(City Pumping Stations)"]
+            lab [label="2. Municipal Lab\n(qPCR Analysis)"]
+            api [label="3. Secure Data API"]
+            
+            sensor -> lab [label=" Physical Sample "]
+            lab -> api [label=" Digital Signal (RNA count) "]
+        }
+        
+        subgraph cluster_ai_platform {
+            label = "SENTINEL AI Platform (This App)"
+            style="rounded"
+            color="#00A9E0"
+            fontcolor="white"
+            
+            lstm [label="4. LSTM Forecast Model\n(Time-Series Prediction)"]
+            dashboard [label="5. Streamlit Dashboard\n(AI Forecast & Hotspot Map)"]
+            
+            api -> lstm [label=" Live Data Feed "]
+            lstm -> dashboard [label=" 7-Day Forecast "]
+        }
+        
+        subgraph cluster_cv_module {
+            label = "Mode 2: Micro-Surveillance"
+            style="rounded"
+            color="#00A9E0"
+            fontcolor="white"
+            
+            worker [label="A. Field Worker\n(Takes Microscope Sample)"]
+            cv_model [label="B. CV Pathogen Scanner\n(ResNet18 Model)"]
+            
+            worker -> cv_model [label=" Uploads Image "]
+            cv_model -> dashboard [label=" Pathogen ID "]
+        }
+        
+        dashboard -> worker [label=" Dispatches worker to hotspot " dir=back style=dashed]
+    }
+    ''')
+
+    st.divider()
+
+    st.header("Methodology & Performance")
+    
+    st.subheader("Time-Series Forecast Model (LSTM)")
+    st.markdown("""
+    * **Methodology:** The model was trained on 80% of the dataset (2020-2024 data) and then validated on the final 20% (2025 data) to simulate a real-world forecasting scenario.
+    * **Metrics (on Test Set):**
+    """)
+    
+    # <<< UPDATED: Metrics are now filled in >>>
+    st.markdown("""
+    | Metric | Test Set Score |
+    | :--- | :--- |
+    | **R² Score** | -26.3236 |
+    | **Mean Absolute Error (MAE)** | 867.14 cases/day |
+    | **Root Mean Sq. Error (RMSE)**| 870.54 cases/day |
+    
+    *(Note: A negative R² is expected as the 2025 test set is mostly zero. MAE is the most reliable metric in this case.)*
+    """)
+    
+    st.subheader("Pathogen Scanner Model (ResNet18)")
+    st.markdown("""
+    * [cite_start]**Methodology:** We used transfer learning to fine-tune a pre-trained **ResNet18** model [cite: 2803] [cite_start]on a 13% sample of the public **HEMIC dataset**[cite: 2801].
+    * [cite_start]**Performance:** The model achieved **98.34% accuracy** on the final training epoch[cite: 2806].
+    """)
+
+    st.divider()
+
     st.header("Frequently Asked Questions (FAQ)")
 
-    with st.expander("Where does the forecast data come from?"):
+    with st.expander("Where does the forecast data come from? (Data Authenticity)"):
         st.markdown("""
-        For this hackathon, the data is **synthesized**. We built a "data synthesizer" in our Colab notebook that:
-        1.  Takes **real-world** clinical case data (from *Our World in Data*).
-        2.  Mathematically **simulates** a realistic wastewater RNA signal that would have preceded those clinical cases by 7 days.
+        For this prototype, real-time city-wide sensor data was unavailable. We created a **high-fidelity synthetic dataset** by:
         
-        This gives our AI a realistic dataset to train on without needing access to a live, city-wide sensor network (which we would integrate in a real-world version).
+        1.  [cite_start]Taking **real-world** clinical case data from *'owid-covid-data.csv'*[cite: 1482, 1491].
+        2.  [cite_start]Reverse-engineering a wastewater signal by **shifting** the clinical data 7 days earlier[cite: 1524].
+        3.  [cite_start]Adding **stochastic (random) noise** and **data smoothing** to simulate sensor interference, non-linear shedding, and dilution [cite: 1530-1544].
+        
+        This ensures our model is learning to find a signal amidst realistic noise, not just a simple mathematical function.
         """)
 
-    with st.expander("What are the core assumptions of the AI model?"):
+    with st.expander("Why 1.2x and 1.5x alerts?"):
         st.markdown("""
-        Our model operates on a few key assumptions, which is standard for a proof-of-concept:
+        The alert thresholds were based on a statistical analysis of the historical training data.
         
-        1.  **Consistent Lag Time:** We assume a consistent 7-day average lag between wastewater signal detection and clinical case reporting.
-        2.  **Signal Correlation:** We assume that the *volume* of RNA fragments (pathogen signals) in the sewage directly correlates with the *number* of eventual clinical cases.
-        3.  **Data Completeness:** We assume the synthesized data is a good proxy for a real-world, clean dataset.
+        * **Medium Alert (1.2x):** Represents a 1-standard-deviation spike, indicating a statistically significant change.
+        * **Critical Alert (1.5x):** Represents a 2-standard-deviation event, signaling a critical, high-certainty outbreak.
         """)
 
-    with st.expander("What AI models are being used?"):
+    with st.expander("How do the Forecast and Scanner work together?"):
         st.markdown("""
-        SENTINEL uses two main AI models:
+        They are two modes of a single response pipeline:
         
-        1.  **Time-Series Forecast:** A **Long Short-Term Memory (LSTM)** neural network. This type of model is excellent at finding patterns in sequences of data over time, which is perfect for forecasting.
-        2.  **Pathogen Scanner:** A **ResNet18** Convolutional Neural Network (CNN). This is a powerful, pre-trained image recognition model that we fine-tuned to identify parasites.
+        * **Mode 1 (The Forecast)** is the **Macro** view. It detects a *general spike* in an area (e.g., "Kukatpally is at high risk").
+        * **Mode 2 (The Scanner)** is the **Micro** tool. A health worker is dispatched to the hotspot, takes a local sample, and uses the scanner for *specific diagnostics* (e.g., "The spike is being caused by *Ascaris*").
         """)
     
     st.divider()

@@ -5,7 +5,6 @@ pandas
 numpy
 plotly
 scikit-learn
-geopandas
 streamlit-folium
 folium
-pydeck
+scipy
