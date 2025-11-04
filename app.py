@@ -231,7 +231,6 @@ if page == "🛰️ Live Dashboard":
         fig = px.line(sim_plot_df, title="AI Forecast vs. Actual Clinical Cases")
         st.plotly_chart(fig, use_container_width=True)
 
-    # <<< UPDATED: This entire block is new. It replaces Folium with PyDeck >>>
     with col2:
         st.subheader("🗺️ Hyderabad Hotspot Map")
         
@@ -288,7 +287,8 @@ if page == "🛰️ Live Dashboard":
 
         # Render the map
         st.pydeck_chart(pdk.Deck(
-            map_style='mapbox://styles/mapbox/light-v9', # Standard light map
+            # <<< *** THIS IS THE ONLY LINE I CHANGED ***
+            map_style='mapbox://styles/mapbox/dark-v9', # Standard dark map
             initial_view_state=view_state,
             layers=[layer],
             tooltip=tooltip
