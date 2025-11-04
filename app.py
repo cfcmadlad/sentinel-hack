@@ -9,8 +9,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from PIL import Image
 import plotly.express as px
-from streamlit_folium import st_folium
-import folium
+import pydeck as pdk  # <-- NEW MAP LIBRARY
 import os
 import glob 
 import joblib 
@@ -159,7 +158,6 @@ page = st.sidebar.radio("Go to:",
     ["🛰️ Live Dashboard", "🔬 Pathogen Scanner", "📖 About the Project"]
 ) 
 
-# <<< NEW: Language Placeholder >>>
 st.sidebar.divider()
 st.sidebar.selectbox("Language", ['English (EN)', 'हिन्दी (HI) - Coming Soon'])
 
@@ -170,7 +168,6 @@ st.sidebar.selectbox("Language", ['English (EN)', 'हिन्दी (HI) - Com
 if page == "🛰️ Live Dashboard":
     st.title("🛰️ SENTINEL: Live Forecast")
     
-    # <<< NEW: Graph Explanation >>>
     with st.expander("What do these graphs indicate?"):
         st.markdown("""
         This dashboard shows the core power of **SENTINEL**: predicting the future.
@@ -234,14 +231,13 @@ if page == "🛰️ Live Dashboard":
         fig = px.line(sim_plot_df, title="AI Forecast vs. Actual Clinical Cases")
         st.plotly_chart(fig, use_container_width=True)
 
+    # <<< UPDATED: This entire block is new. It replaces Folium with PyDeck >>>
     with col2:
         st.subheader("🗺️ Hyderabad Hotspot Map")
         
-        map_center = [17.3850, 78.4867]
-        m = folium.Map(location=map_center, zoom_start=11) # Default OpenStreetMap
-
         alert_level = st.session_state.get('alert_level', "Low")
         
+        # Determine number of red hotspots based on alert level
         if alert_level == "High":
             st.error("RISK LEVEL: HIGH. Multiple hotspots detected.")
             num_red = random.randint(10, 15)
@@ -252,34 +248,51 @@ if page == "🛰️ Live Dashboard":
             st.info("RISK LEVEL: LOW. All areas stable.")
             num_red = random.randint(0, 1)
 
-        red_localities = hotspot_data.sample(n=num_red)
-        green_localities = hotspot_data.drop(red_localities.index)
+        # Create a copy to avoid changing the cached data
+        chart_data = hotspot_data.copy()
+        
+        # Get random indices for red hotspots
+        red_indices = chart_data.sample(n=num_red).index
+        
+        # Define colors (R, G, B)
+        CRIMSON_RED = [220, 20, 60]
+        FOREST_GREEN = [34, 139, 34]
+        
+        # Assign colors and sizes based on alert status
+        chart_data['color'] = chart_data.apply(lambda row: CRIMSON_RED if row.name in red_indices else FOREST_GREEN, axis=1)
+        chart_data['size'] = chart_data.apply(lambda row: 150 if row.name in red_indices else 50, axis=1)
+        
+        # Set the map view for Hyderabad
+        view_state = pdk.ViewState(
+            latitude=17.3850,
+            longitude=78.4867,
+            zoom=10,
+            pitch=45,
+        )
 
-        # Add RED circles
-        for _, row in red_localities.iterrows():
-            folium.CircleMarker(
-                location=[row['lat'], row['lon']],
-                radius=row['risk_score'],
-                popup=f"{row['location']}<br>Risk: {row['risk_score']} (HIGH)",
-                color='#DC143C', # Crimson red
-                fill=True,
-                fill_color='#DC143C',
-                fill_opacity=0.6
-            ).add_to(m)
+        # Create the map layer
+        layer = pdk.Layer(
+            'ScatterplotLayer',
+            data=chart_data,
+            get_position='[lon, lat]',
+            get_color='color',
+            get_radius='size',
+            pickable=True
+        )
 
-        # Add GREEN circles
-        for _, row in green_localities.iterrows():
-            folium.CircleMarker(
-                location=[row['lat'], row['lon']],
-                radius=5, 
-                popup=f"{row['location']}<br>Status: Stable",
-                color='#228B22', # Forest green
-                fill=True,
-                fill_color='#228B22',
-                fill_opacity=0.6
-            ).add_to(m)
+        # Tooltip
+        tooltip = {
+            "html": "<b>Location:</b> {location}<br/><b>Risk:</b> {risk_score}",
+            "style": {"color": "white"}
+        }
 
-        st_folium(m, width=700, height=500)
+        # Render the map
+        st.pydeck_chart(pdk.Deck(
+            map_style='mapbox://styles/mapbox/light-v9', # Standard light map
+            initial_view_state=view_state,
+            layers=[layer],
+            tooltip=tooltip
+        ))
 
 
 # --- PAGE 2: CV PARASITE SCAN ---
@@ -290,10 +303,9 @@ elif page == "🔬 Pathogen Scanner":
     This module is a **proof-of-concept** demonstrating the platform's AI capabilities for visual identification.
     """)
     
-    # <<< NEW: "How we did it" section >>>
     with st.expander("How this feature works (and its assumptions)"):
         st.markdown("""
-        * **How we did it:** We fine-tuned a pre-trained **ResNet18** model, a powerful Computer Vision algorithm, on a public dataset of parasite images. The model learns to identify the unique visual features of each organism.
+        * **How we did it:** We fine-tuned a pre-trained **ResNet18** model, a powerful Computer Vision algorithm, on a public dataset of parasite images. The model learns to identify and quantify the unique visual features of each organism.
         * **Assumptions:** This tool assumes the uploaded image is a clear, in-focus microscope slide of a single, isolated organism.
         
         **Its Current Use (Demo):**
@@ -318,20 +330,17 @@ elif page == "🔬 Pathogen Scanner":
 elif page == "📖 About the Project":
     st.title("📖 About SENTINEL")
     
-    # <<< NEW: Team Section >>>
-    st.header("About the Team")
+    st.header("About the Team: Markov Chained")
     st.markdown("""
-    We are **Team Markov Chained**, a group of developers passionate about using AI for public good.
-    
-    * **Team Member 1:** (Your Name)
-    * **Team Member 2:** (Teammate's Name)
-    * **Team Member 3:** (Teammate's Name)
-    * *(Add as many as you need)*
+    * **Aditya Rayaprolu:** Team Lead & Public Health
+    * **Harsh Gunda:** ML & Predictions
+    * **Vishisht T.B.:** Backend & Tech
+    * **Gautham Pratheep:** Vision Al
+    * **Karthikeya Reddy Patana:** Vision Al
     """)
     
     st.divider()
 
-    # <<< NEW: FAQ Section >>>
     st.header("Frequently Asked Questions (FAQ)")
 
     with st.expander("Where does the forecast data come from?"):
@@ -348,7 +357,7 @@ elif page == "📖 About the Project":
         Our model operates on a few key assumptions, which is standard for a proof-of-concept:
         
         1.  **Consistent Lag Time:** We assume a consistent 7-day average lag between wastewater signal detection and clinical case reporting.
-        2.  **Signal Correlation:** We assume that the *volume* of RNA fragments in the sewage directly correlates with the *number* of eventual clinical cases.
+        2.  **Signal Correlation:** We assume that the *volume* of RNA fragments (pathogen signals) in the sewage directly correlates with the *number* of eventual clinical cases.
         3.  **Data Completeness:** We assume the synthesized data is a good proxy for a real-world, clean dataset.
         """)
 
@@ -362,7 +371,6 @@ elif page == "📖 About the Project":
     
     st.divider()
 
-    # <<< NEW: Data/Privacy Section >>>
     st.header("Our Data & Privacy Philosophy")
     st.info("**Does this app save my data?** \n\n**No.** This demo app is completely self-contained. It does not save any data you upload (like microscope images) and does not log your location or interaction.", icon="💡")
 
