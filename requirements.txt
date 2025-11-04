@@ -8,3 +8,4 @@ scikit-learn
 geopandas
 streamlit-folium
 folium
+pydeck

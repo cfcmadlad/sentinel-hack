@@ -9,7 +9,8 @@ from torch.utils.data import DataLoader, TensorDataset
 from sklearn.preprocessing import MinMaxScaler
 from PIL import Image
 import plotly.express as px
-import pydeck as pdk  # <-- NEW MAP LIBRARY
+from streamlit_folium import st_folium  # Using folium
+import folium                             # Using folium
 import os
 import glob 
 import joblib 
@@ -137,6 +138,23 @@ def create_sequences(case_data, target_data, seq_length, prediction_delay):
         ys.append(y)
     return np.array(xs), np.array(ys)
 
+# LSTM Model Class Definition (Moved up for clarity)
+class LSTMModel(nn.Module):
+    def __init__(self, input_size=1, hidden_size=50, num_layers=2, output_size=1, dropout=0.2):
+        super(LSTMModel, self).__init__()
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, 
+                            batch_first=True, dropout=dropout)
+        self.fc = nn.Linear(hidden_size, output_size)
+
+    def forward(self, x):
+        h0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        c0 = torch.zeros(self.num_layers, x.size(0), self.hidden_size).to(x.device)
+        out, _ = self.lstm(x, (h0, c0))  
+        out = self.fc(out[:, -1, :])
+        return out
+
 
 # --- 3. LOAD ALL DATA ---
 with st.spinner('Warming up AI models and loading data...'):
@@ -179,10 +197,9 @@ if page == "🛰️ Live Dashboard":
         **The Goal:** The closer the dotted line (prediction) tracks the solid line (actual), the more accurate our 7-day warning system is.
         """)
     
-    col1, col2 = st.columns([0.6, 0.4]) 
-
-    with col1: 
-        # --- Data pipeline for chart ---
+    # <<< PERFORMANCE FIX: Heavy data processing is moved out of the fragment >>>
+    @st.cache_data
+    def get_full_predictions():
         scaled_ww = scaler_ww.transform(df_plot_data[['wastewater_viral_load']])
         scaled_clin = scaler_clin.transform(df_plot_data[['clinical_cases']])
         SEQ_LENGTH = 30  
@@ -199,100 +216,105 @@ if page == "🛰️ Live Dashboard":
             'Actual Clinical Cases': y_actual.flatten(),
             'Predicted Clinical Cases': all_predictions.flatten()
         }, index=plot_dates)
+        return plot_df
+    
+    plot_df = get_full_predictions()
 
-        st.subheader("Select Date to Simulate")
-        sim_date = st.slider(
-            "Simulate time",
-            min_value=plot_df.index.min().to_pydatetime(),
-            max_value=plot_df.index.max().to_pydatetime(),
-            value=plot_df.index.min().to_pydatetime(),
-            format="YYYY-MM-DD"
-        )
-        sim_plot_df = plot_df.loc[:sim_date]
-        
-        # Alert Logic
-        latest_actual = sim_plot_df['Actual Clinical Cases'].iloc[-1]
-        latest_prediction = sim_plot_df['Predicted Clinical Cases'].iloc[-1]
-        spike_ratio = latest_prediction / (latest_actual + 1e-6) 
-        HIGH_ALERT_THRESHOLD = 1.5
-        MEDIUM_ALERT_THRESHOLD = 1.2
+    # <<< STABLE MAP FIX: Wrap the interactive parts in a fragment >>>
+    @st.fragment
+    def run_forecast_dashboard():
+        col1, col2 = st.columns([0.6, 0.4]) 
 
-        if spike_ratio > HIGH_ALERT_THRESHOLD and latest_prediction > 100: 
-            st.error(f"**CRITICAL ALERT!** Predicted cases ({int(latest_prediction):,}) are spiking. This is a 7-day warning.")
-            st.session_state['alert_level'] = "High"
-        elif spike_ratio > MEDIUM_ALERT_THRESHOLD and latest_prediction > 50:
-            st.warning(f"**MEDIUM ALERT:** Predicted cases ({int(latest_prediction):,}) show a moderate spike.")
-            st.session_state['alert_level'] = "Medium"
-        else:
-            st.info("System is stable. Predictions align with current clinical rates.")
-            st.session_state['alert_level'] = "Low"
-        
-        # Plot the chart
-        fig = px.line(sim_plot_df, title="AI Forecast vs. Actual Clinical Cases")
-        st.plotly_chart(fig, use_container_width=True)
+        with col1: 
+            st.subheader("Select Date to Simulate")
+            sim_date = st.slider(
+                "Simulate time",
+                min_value=plot_df.index.min().to_pydatetime(),
+                max_value=plot_df.index.max().to_pydatetime(),
+                value=plot_df.index.min().to_pydatetime(),
+                format="YYYY-MM-DD",
+                key="sim_slider" # Add a key for stability
+            )
+            sim_plot_df = plot_df.loc[:sim_date]
+            
+            # Alert Logic
+            latest_actual = sim_plot_df['Actual Clinical Cases'].iloc[-1]
+            latest_prediction = sim_plot_df['Predicted Clinical Cases'].iloc[-1]
+            spike_ratio = latest_prediction / (latest_actual + 1e-6) 
+            HIGH_ALERT_THRESHOLD = 1.5
+            MEDIUM_ALERT_THRESHOLD = 1.2
 
-    with col2:
-        st.subheader("🗺️ Hyderabad Hotspot Map")
-        
-        alert_level = st.session_state.get('alert_level', "Low")
-        
-        # Determine number of red hotspots based on alert level
-        if alert_level == "High":
-            st.error("RISK LEVEL: HIGH. Multiple hotspots detected.")
-            num_red = random.randint(10, 15)
-        elif alert_level == "Medium":
-            st.warning("RISK LEVEL: MEDIUM. Sporadic hotspots detected.")
-            num_red = random.randint(2, 7)
-        else: # Low
-            st.info("RISK LEVEL: LOW. All areas stable.")
-            num_red = random.randint(0, 1)
+            if spike_ratio > HIGH_ALERT_THRESHOLD and latest_prediction > 100: 
+                st.error(f"**CRITICAL ALERT!** Predicted cases ({int(latest_prediction):,}) are spiking. This is a 7-day warning.")
+                st.session_state['alert_level'] = "High"
+            elif spike_ratio > MEDIUM_ALERT_THRESHOLD and latest_prediction > 50:
+                st.warning(f"**MEDIUM ALERT:** Predicted cases ({int(latest_prediction):,}) show a moderate spike.")
+                st.session_state['alert_level'] = "Medium"
+            else:
+                st.info("System is stable. Predictions align with current clinical rates.")
+                st.session_state['alert_level'] = "Low"
+            
+            # Plot the chart
+            fig = px.line(sim_plot_df, title="AI Forecast vs. Actual Clinical Cases")
+            st.plotly_chart(fig, use_container_width=True)
 
-        # Create a copy to avoid changing the cached data
-        chart_data = hotspot_data.copy()
-        
-        # Get random indices for red hotspots
-        red_indices = chart_data.sample(n=num_red).index
-        
-        # Define colors (R, G, B)
-        CRIMSON_RED = [220, 20, 60]
-        FOREST_GREEN = [34, 139, 34]
-        
-        # Assign colors and sizes based on alert status
-        chart_data['color'] = chart_data.apply(lambda row: CRIMSON_RED if row.name in red_indices else FOREST_GREEN, axis=1)
-        chart_data['size'] = chart_data.apply(lambda row: 150 if row.name in red_indices else 50, axis=1)
-        
-        # Set the map view for Hyderabad
-        view_state = pdk.ViewState(
-            latitude=17.3850,
-            longitude=78.4867,
-            zoom=10,
-            pitch=45,
-        )
+        with col2:
+            st.subheader("🗺️ Hyderabad Hotspot Map")
+            
+            map_center = [17.3850, 78.4867]
+            m = folium.Map(location=map_center, zoom_start=11) # Default OpenStreetMap
 
-        # Create the map layer
-        layer = pdk.Layer(
-            'ScatterplotLayer',
-            data=chart_data,
-            get_position='[lon, lat]',
-            get_color='color',
-            get_radius='size',
-            pickable=True
-        )
+            alert_level = st.session_state.get('alert_level', "Low")
+            
+            if alert_level == "High":
+                st.error("RISK LEVEL: HIGH. Multiple hotspots detected.")
+                num_red = random.randint(10, 15)
+            elif alert_level == "Medium":
+                st.warning("RISK LEVEL: MEDIUM. Sporadic hotspots detected.")
+                num_red = random.randint(2, 7)
+            else: # Low
+                st.info("RISK LEVEL: LOW. All areas stable.")
+                num_red = random.randint(0, 1)
 
-        # Tooltip
-        tooltip = {
-            "html": "<b>Location:</b> {location}<br/><b>Risk:</b> {risk_score}",
-            "style": {"color": "white"}
-        }
+            # Get randomized hotspots for this specific render
+            red_localities = hotspot_data.sample(n=num_red, random_state=pd.to_datetime(sim_date).day)
+            green_localities = hotspot_data.drop(red_localities.index)
 
-        # Render the map
-        st.pydeck_chart(pdk.Deck(
-            # <<< *** THIS IS THE ONLY LINE I CHANGED ***
-            map_style='mapbox://styles/mapbox/dark-v9', # Standard dark map
-            initial_view_state=view_state,
-            layers=[layer],
-            tooltip=tooltip
-        ))
+            # Add RED circles
+            for _, row in red_localities.iterrows():
+                folium.CircleMarker(
+                    location=[row['lat'], row['lon']],
+                    radius=row['risk_score'],
+                    popup=f"{row['location']}<br>Risk: {row['risk_score']} (HIGH)",
+                    color='#DC143C', 
+                    fill=True,
+                    fill_color='#DC143C',
+                    fill_opacity=0.6
+                ).add_to(m)
+
+            # Add GREEN circles
+            for _, row in green_localities.iterrows():
+                folium.CircleMarker(
+                    location=[row['lat'], row['lon']],
+                    radius=5, 
+                    popup=f"{row['location']}<br>Status: Stable",
+                    color='#228B22', 
+                    fill=True,
+                    fill_color='#228B22',
+                    fill_opacity=0.6
+                ).add_to(m)
+
+            # <<< STABLE MAP FIX: Add key and returned_objects
+            st_folium(
+                m, 
+                width=700, 
+                height=500, 
+                key="hyd_map", 
+                returned_objects=[] # This stops the map from "glitching"
+            )
+
+    # --- Call the fragment to run ---
+    run_forecast_dashboard()
 
 
 # --- PAGE 2: CV PARASITE SCAN ---
